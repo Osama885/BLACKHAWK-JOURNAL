@@ -1,0 +1,1175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BLACKHAWK Dynamic Trading Journal</title>
+    <!-- 
+      Chosen Palette: Blackhawk Dark/Gold
+      - Background: Charcoal Black (#101010)
+      - Cards: Dark Gray (#1c1c1c)
+      - Primary Accent: Gold (#ffb142)
+    -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'dark-bg': '#101010', 
+                        'dark-card': '#1c1c1c',
+                        'accent-green': '#00b894',
+                        'accent-red': '#d63030',
+                        'accent-blue': '#0984e3',
+                        'gold': '#ffb142',
+                        'light-gold': '#ffd080',
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style>
+        body::-webkit-scrollbar { width: 8px; }
+        body::-webkit-scrollbar-thumb { background-color: #3f3e53; border-radius: 4px; }
+        .hidden-transition { max-height: 0; overflow: hidden; transition: max-height 0.4s ease-out, padding 0.4s ease-out; }
+        .show-transition { max-height: 800px; padding-top: 1rem; } /* Increased max-height for LLM output */
+        .chart-bar { transition: width 0.5s ease-out; }
+        .tab-button { padding: 0.75rem 1.5rem; border-radius: 0.5rem 0.5rem 0 0; font-weight: 600; transition: all 0.2s; }
+        .tab-active { background-color: #1c1c1c; color: #ffb142; border-bottom: 2px solid #ffb142; }
+        .tab-inactive { background-color: #2c2c2c; color: #ccc; }
+        .form-input { width: 100%; padding: 0.75rem; background-color: #2c2c2c; border: 1px solid #3d3d3d; border-radius: 0.5rem; color: white; transition: border-color 0.2s, box-shadow 0.2s; }
+        .form-input:focus { outline: none; border-color: #ffb142; box-shadow: 0 0 0 2px rgba(255, 177, 66, 0.5); }
+        /* Style for KPI boxes (ensures content is centered as requested) */
+        .kpi-card-content {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            height: 100%; /* Important for centering */
+        }
+    </style>
+</head>
+<body class="bg-dark-bg text-gray-100 font-sans min-h-screen p-4 md:p-8">
+
+    <!-- Header -->
+    <header class="mb-6 flex flex-col md:flex-row items-center justify-between space-y-4 md:space-y-0">
+        <div class="flex items-center space-x-4">
+            <img 
+                src="uploaded:WhatsApp Image 2025-10-06 at 17.15.34_6932f8b1.jpg-715dce3e-0cf7-4202-8892-0ddd2cda8404" 
+                alt="BLACKHAWK TRADER Logo" 
+                class="h-16 w-16 md:h-20 md:w-20 object-cover shadow-lg rounded-full border-2 border-gold"
+                onerror="this.onerror=null; this.src='https://placehold.co/80x80/1c1c1c/ffb142?text=BH';"
+            >
+            <h1 class="text-3xl md:text-4xl font-extrabold text-white tracking-wide">
+                BLACKHAWK JOURNAL
+            </h1>
+        </div>
+        <p class="text-sm text-gray-400">User ID: <span id="user-id-display" class="font-mono text-xs text-gold">[Loading...]</span></p>
+    </header>
+    
+    <!-- Tab Navigation -->
+    <nav class="flex border-b border-gray-700 mb-8">
+        <button id="tab-dashboard" onclick="setActiveTab('dashboard')" class="tab-button tab-active">
+            Dashboard
+        </button>
+        <button id="tab-log-trade" onclick="setActiveTab('log-trade')" class="tab-button tab-inactive">
+            Log New Trade
+        </button>
+        <button id="tab-trade-log" onclick="setActiveTab('trade-log')" class="tab-button tab-inactive">
+            Trade Log
+        </button>
+    </nav>
+
+    <!-- Loading Spinner (Global) -->
+    <div id="loading-spinner" class="text-center p-12">
+        <svg class="animate-spin h-8 w-8 text-gold mx-auto mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        <p class="text-gray-400">Loading BLACKHAWK Journal...</p>
+    </div>
+
+    <!-- View Containers (Centered content with max width for responsiveness) -->
+    <main class="lg:w-10/12 xl:w-8/12 mx-auto hidden" id="main-content">
+        
+        <!-- Dashboard View -->
+        <div id="dashboard-view" class="tab-content space-y-10">
+            <!-- KPI Summary Grid: Increased gap from gap-4 to gap-6 -->
+            <section>
+                <div class="flex flex-col md:flex-row justify-between items-center mb-6 border-b border-gray-800 pb-2">
+                    <h2 class="text-3xl font-bold text-light-gold">Account Overview</h2>
+                    <button id="generate-summary-btn" onclick="getDashboardAnalysis(window.tradesForRender)" class="mt-4 md:mt-0 bg-accent-blue hover:bg-blue-600 text-white font-bold py-2 px-6 rounded-xl transition duration-200 shadow-lg disabled:opacity-50 flex items-center space-x-2">
+                         <span class="text-xl">✨</span> <span>Generate Performance Summary</span>
+                    </button>
+                </div>
+                
+                <!-- AI Summary Output Container -->
+                <div id="ai-summary-output" class="bg-dark-card p-6 rounded-xl shadow-2xl border border-gold/50 mb-8 hidden">
+                     <p class="text-lg font-semibold text-white mb-2">AI Performance Review:</p>
+                     <div id="summary-content" class="text-gray-300"></div>
+                     <p id="summary-sources" class="text-xs text-gray-500 mt-3"></p>
+                </div>
+
+                <div id="kpi-dashboard" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-6">
+                    <!-- KPI Cards rendered here -->
+                </div>
+            </section>
+
+            <!-- Trade Breakdown and Insights -->
+            <section>
+                <h2 class="text-3xl font-bold text-light-gold mb-6 border-b border-gray-800 pb-2">Performance Breakdown</h2>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <!-- Strategy Breakdown -->
+                    <div class="bg-dark-card p-6 rounded-xl shadow-2xl border border-gray-800">
+                        <h3 class="text-xl font-semibold text-white mb-4">Strategy Profitability (P&L)</h3>
+                        <div id="strategy-breakdown" class="space-y-4">
+                            <!-- Content rendered here or empty state added by JS -->
+                        </div>
+                    </div>
+
+                    <!-- Emotion vs. R:R -->
+                    <div class="bg-dark-card p-6 rounded-xl shadow-2xl border border-gray-800">
+                        <h3 class="text-xl font-semibold text-white mb-4">Emotion vs. Avg. R:R Ratio</h3>
+                        <div id="emotion-breakdown" class="space-y-4">
+                            <!-- Content rendered here or empty state added by JS -->
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- New Trade View -->
+        <div id="log-trade-view" class="tab-content hidden">
+            <h2 class="text-3xl font-bold text-light-gold mb-6 border-b border-gray-800 pb-2" id="form-title">Log New Trade</h2>
+            <div class="bg-dark-card p-6 rounded-xl shadow-2xl border border-gray-800">
+                
+                <!-- Message Box for Feedback and Deletion Confirmation -->
+                <div id="messageBox" class="mb-4 text-center text-sm hidden"></div>
+                <input type="hidden" id="editing-trade-id" value="">
+
+                <form id="new-trade-form" onsubmit="handleFormSubmit(event)">
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                        <!-- Date -->
+                        <div>
+                            <label for="trade-date" class="block text-sm font-medium text-gray-400 mb-2">Date</label>
+                            <input type="date" id="trade-date" class="form-input" required>
+                        </div>
+                        <!-- Symbol -->
+                        <div>
+                            <label for="symbol" class="block text-sm font-medium text-gray-400 mb-2">Symbol</label>
+                            <select id="symbol" class="form-input" required>
+                                <option value="" disabled selected>Select Pair</option>
+                            </select>
+                        </div>
+                         <!-- Side -->
+                        <div>
+                            <label for="side" class="block text-sm font-medium text-gray-400 mb-2">Side</label>
+                            <select id="side" class="form-input" required>
+                                <option value="Long">Long</option>
+                                <option value="Short">Short</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-6 mb-6">
+                        <!-- Entry Price -->
+                        <div>
+                            <label for="entry-price" class="block text-sm font-medium text-gray-400 mb-2">Entry Price</label>
+                            <input type="number" step="any" id="entry-price" placeholder="e.g., 3969.18" class="form-input" required>
+                        </div>
+                        <!-- Exit Price -->
+                        <div>
+                            <label for="exit-price" class="block text-sm font-medium text-gray-400 mb-2">Exit Price</label>
+                            <input type="number" step="any" id="exit-price" placeholder="e.g., 3979.00" class="form-input" required>
+                        </div>
+                        <!-- Initial SL -->
+                        <div>
+                            <label for="initial-sl" class="block text-sm font-medium text-gray-400 mb-2">Initial Stop Loss (SL)</label>
+                            <input type="number" step="any" id="initial-sl" placeholder="e.g., 3964.30" class="form-input" required>
+                        </div>
+                        <!-- Lot Size -->
+                        <div>
+                            <label for="lot-size" class="block text-sm font-medium text-gray-400 mb-2">Lot Size (Vol.)</label>
+                            <input type="number" step="any" id="lot-size" placeholder="e.g., 0.03" class="form-input" required>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                        <!-- Strategy -->
+                        <div>
+                            <label for="strategy" class="block text-sm font-medium text-gray-400 mb-2">Strategy Used</label>
+                            <select id="strategy" class="form-input" required>
+                                <option value="" disabled selected>Select Strategy</option>
+                            </select>
+                        </div>
+                        <!-- Emotion -->
+                        <div>
+                            <label for="emotion" class="block text-sm font-medium text-gray-400 mb-2">Emotion Felt</label>
+                            <select id="emotion" class="form-input" required>
+                                <option value="" disabled selected>Select Emotion</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Feedback & Submit -->
+                    <div class="flex flex-col sm:flex-row justify-between items-center pt-4 border-t border-gray-700">
+                        <p id="form-message" class="text-sm text-accent-red mb-4 sm:mb-0"></p>
+                        <div class="flex space-x-2">
+                             <button type="button" id="cancel-edit-button" onclick="cancelEdit()" class="bg-gray-600 hover:bg-gray-500 text-white font-bold py-3 px-8 rounded-xl transition duration-200 shadow-xl hidden">
+                                Cancel
+                            </button>
+                            <button type="submit" id="submit-button" class="bg-gold hover:bg-light-gold text-dark-bg font-bold py-3 px-8 rounded-xl transition duration-200 shadow-xl disabled:opacity-50">
+                                Log Trade
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Trade Log View -->
+        <div id="trade-log-view" class="tab-content hidden">
+            <h2 class="text-3xl font-bold text-light-gold mb-6 border-b border-gray-800 pb-2">Detailed Trade Log</h2>
+            <div id="trades-list" class="space-y-3">
+                <!-- Collapsible Trade Cards rendered here -->
+            </div>
+            <p id="no-trades-message" class="text-center text-gray-500 mt-6 hidden">No trades logged. Log a new trade!</p>
+        </div>
+    </main>
+
+
+    <!-- Firebase & Gemini API Imports and Configuration -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, addDoc, updateDoc, deleteDoc, onSnapshot, collection, query, writeBatch, setLogLevel, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- GLOBAL VARIABLES (FROM .CSV FILES) ---
+        const firebaseConfig = {
+    apiKey: "AIzaSyAGhBYrQFlid7b25Bo7gcSalTlTxMwQowM", 
+    authDomain: "blackhawk-journal.firebaseapp.com", 
+    projectId: "blackhawk-journal", 
+    storageBucket: "blackhawk-journal.firebasestorage.app",
+    messagingSenderId: "593673435470",
+    appId: "1:593673435470:web:d64e9b0f6cde33e8cbc61f",
+};
+
+const appId = firebaseConfig.projectId; // Sets the app ID based on your project
+const initialAuthToken = null; // No token for live deployment
+
+
+
+        let startingCapital = 9187.00; // Default value from Summary_Dashboard.csv
+        window.tradesForRender = []; // Global variable to hold trades for dashboard refresh
+        window.kpiCache = {}; // Cache for calculated KPIs
+
+        const STRATEGIES = ["Breakout", "Pullback", "Reversal", "FIB", "Gap Fill", "Pre-LONDON", "Pre-NY", "Copy_KINETIC"]; // From _Lists_.csv
+        const EMOTIONS = ["Calm", "Greedy", "FOMO", "Revenge", "Impatient"]; // From _Lists_.csv
+        const SYMBOLS = ["USDJPY", "USOIL", "EURUSD", "XAUUSD", "BTCUSD", "ETHUSD", "US30", "GBPUSD"]; // From _Lists_.csv
+        
+        // HTML strings for empty state messages to prevent DOM reference issues
+        const STRATEGY_EMPTY_HTML = `<p class="text-gray-500 text-sm p-4 text-center">No trades to analyze.</p>`;
+        const EMOTION_EMPTY_HTML = `<p class="text-gray-500 text-sm p-4 text-center">No trades to analyze.</p>`;
+
+
+        // --- SEEDED DATA (The 5 Trade Entries from Trade_Log.csv) ---
+        const SEEDED_TRADES = [
+            { date: '2025-11-05', symbol: 'XAUUSD', side: 'Long', entry: 3969.18, exit: 3979.00, initialSL: 3964.30, lot: 0.03, strategy: 'Pre-LONDON', emotion: 'Calm', netPNL: 29.46, rr: 2.01, result: 'Win', timestamp: new Date('2025-11-05T10:00:00Z').getTime() },
+            { date: '2025-11-05', symbol: 'XAUUSD', side: 'Long', entry: 3980.89, exit: 3983.11, initialSL: 3977.00, lot: 0.02, strategy: 'Breakout', emotion: 'FOMO', netPNL: 4.44, rr: 0.57, result: 'Win', timestamp: new Date('2025-11-05T11:00:00Z').getTime() },
+            { date: '2025-11-05', symbol: 'XAUUSD', side: 'Short', entry: 3980.00, exit: 3983.00, initialSL: 3973.00, lot: 0.06, strategy: 'Reversal', emotion: 'Greedy', netPNL: -18.00, rr: -0.87, result: 'Loss', timestamp: new Date('2025-11-05T12:00:00Z').getTime() },
+            { date: '2025-11-06', symbol: 'USDJPY', side: 'Long', entry: 145.500, exit: 146.000, initialSL: 145.300, lot: 1.00, strategy: 'Pullback', emotion: 'Calm', netPNL: 500.00, rr: 2.50, result: 'Win', timestamp: new Date('2025-11-06T13:00:00Z').getTime() },
+            { date: '2025-11-06', symbol: 'EURUSD', side: 'Short', entry: 1.07500, exit: 1.07800, initialSL: 1.07600, lot: 0.50, strategy: 'Breakout', emotion: 'Impatient', netPNL: -150.00, rr: -3.00, result: 'Loss', timestamp: new Date('2025-11-06T14:00:00Z').getTime() },
+        ];
+        
+        // --- APPLICATION STATE ---
+        let db;
+        let auth;
+        let userId = null;
+        let isAuthReady = false;
+        let tradesCache = {}; // Local cache for editing
+
+        // --- EXPOSE FUNCTIONS to global window object ---
+        window.setActiveTab = setActiveTab;
+        window.toggleTradeDetails = toggleTradeDetails;
+        window.handleFormSubmit = handleFormSubmit;
+        window.handleEdit = handleEdit;
+        window.handleDelete = handleDelete;
+        window.cancelEdit = cancelEdit;
+        
+        // Exposed functions for Capital Editing
+        window.handleEditCapital = handleEditCapital;
+        window.saveCapitalAndClose = saveCapitalAndClose;
+        window.cancelEditCapital = cancelEditCapital;
+
+        // Exposed functions for Gemini API features
+        window.getTradeInsight = getTradeInsight;
+        window.getDashboardAnalysis = getDashboardAnalysis;
+        
+        // --- GEMINI API UTILITY ---
+        async function callGeminiApi(payload, useGrounding = false, maxRetries = 3) {
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
+            let response = null;
+            let lastError = null;
+
+            for (let attempt = 0; attempt < maxRetries; attempt++) {
+                try {
+                    const finalPayload = {
+                        ...payload,
+                        tools: useGrounding ? [{ "google_search": {} }] : undefined,
+                    };
+                    
+                    response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(finalPayload)
+                    });
+
+                    if (response.ok) {
+                        const result = await response.json();
+                        const candidate = result.candidates?.[0];
+                        
+                        if (candidate && candidate.content?.parts?.[0]?.text) {
+                            const text = candidate.content.parts[0].text;
+                            
+                            let sources = [];
+                            const groundingMetadata = candidate.groundingMetadata;
+                            if (groundingMetadata && groundingMetadata.groundingAttributions) {
+                                sources = groundingMetadata.groundingAttributions
+                                    .map(attr => ({ uri: attr.web?.uri, title: attr.web?.title }))
+                                    .filter(source => source.uri && source.title);
+                            }
+                            return { text, sources };
+                        } else {
+                            throw new Error("Gemini response was empty or malformed.");
+                        }
+                    } else {
+                        // Log 4xx/5xx errors and retry if not the last attempt
+                        lastError = `API Error: ${response.status} ${response.statusText}`;
+                        if (attempt < maxRetries - 1) {
+                             console.warn(`Retrying in ${2 ** attempt}s...`);
+                            await new Promise(resolve => setTimeout(resolve, 1000 * (2 ** attempt)));
+                        } else {
+                            throw new Error(lastError);
+                        }
+                    }
+                } catch (error) {
+                    lastError = error;
+                    if (attempt < maxRetries - 1) {
+                        await new Promise(resolve => setTimeout(resolve, 1000 * (2 ** attempt)));
+                    } else {
+                        throw error;
+                    }
+                }
+            }
+            throw lastError;
+        }
+
+        // --- GEMINI FEATURE 1: TRADE INSIGHT ---
+        async function getTradeInsight(tradeId) {
+            const trade = tradesCache[tradeId];
+            if (!trade) {
+                showMessage('Trade not found for analysis.', 'error');
+                return;
+            }
+
+            const insightDiv = document.getElementById(`insight-output-${tradeId}`);
+            const insightButton = document.getElementById(`analyze-btn-${tradeId}`);
+            const arrowIcon = document.getElementById(`arrow-${tradeId}`);
+
+            insightButton.disabled = true;
+            insightButton.textContent = 'Analyzing...';
+            insightDiv.innerHTML = `<p class="text-gold animate-pulse">Calculating AI insight...</p>`;
+            
+            // Ensure the trade details are open to show the insight
+            if (detailsDiv.classList.contains('hidden-transition')) {
+                 toggleTradeDetails(tradeId);
+            }
+            
+            const pnlSign = trade.netPNL >= 0 ? 'Profit' : 'Loss';
+            
+            const systemPrompt = `You are a professional Trading Journal Analyst. Your task is to provide a concise, structured review of a single trade based on the provided data. Structure your response into two paragraphs: 1. **Risk & Outcome Analysis** (comment on PNL, R:R, and outcome); 2. **Behavioral Feedback** (comment on the Strategy and Emotion, offering a constructive suggestion). Keep the tone professional and focused.`;
+            
+            const userQuery = `Analyze this trade:
+                - Date: ${trade.date}
+                - Symbol: ${trade.symbol}
+                - Outcome: ${trade.result} (${pnlSign} of $${Math.abs(trade.netPNL).toFixed(2)})
+                - R:R Ratio: ${trade.rr}
+                - Strategy: ${trade.strategy}
+                - Emotion: ${trade.emotion}`;
+
+            try {
+                const result = await callGeminiApi({
+                    contents: [{ parts: [{ text: userQuery }] }],
+                    systemInstruction: { parts: [{ text: systemPrompt }] }
+                });
+
+                insightDiv.innerHTML = result.text.replace(/\n/g, '<p class="mt-2">');
+
+            } catch (error) {
+                console.error("Gemini API error for Trade Insight:", error);
+                insightDiv.innerHTML = `<p class="text-accent-red">AI Analysis failed. Error: ${error.message}</p>`;
+            } finally {
+                insightButton.disabled = false;
+                insightButton.innerHTML = '<span class="text-xl">✨</span> Analyze Trade';
+            }
+        }
+        
+        // --- GEMINI FEATURE 2: DASHBOARD SUMMARY ---
+        async function getDashboardAnalysis(trades) {
+            const button = document.getElementById('generate-summary-btn');
+            const summaryOutput = document.getElementById('ai-summary-output');
+            const summaryContent = document.getElementById('summary-content');
+            const summarySources = document.getElementById('summary-sources');
+            
+            if (trades.length === 0) {
+                showMessage('Cannot generate summary: No trades logged yet!', 'error');
+                return;
+            }
+
+            button.disabled = true;
+            button.innerHTML = '<svg class="animate-spin h-5 w-5 mr-3" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Analyzing Performance...';
+            summaryOutput.classList.remove('hidden');
+            summaryContent.innerHTML = `<p class="text-gold animate-pulse">Consulting global markets for context...</p>`;
+            summarySources.textContent = '';
+            
+            const { totalPNL, totalTrades, winRate, avgRR, avgWin, avgLoss } = window.kpiCache;
+            
+            const systemPrompt = `You are a Senior Financial Analyst specializing in retail trading performance. Analyze the key performance indicators (KPIs) provided. In a single, professional paragraph, summarize the trader's performance, highlighting one strength and one area for improvement. Use the Google Search tool to ground the analysis in the context of recent market conditions (e.g., mention volatility, rate hikes, or recent key data releases) without explicitly stating "Google Search".`;
+
+            const userQuery = `Summarize the recent trading performance based on these KPIs:
+                - Total Net P&L: $${totalPNL.toFixed(2)}
+                - Total Trades: ${totalTrades}
+                - Win Rate: ${winRate.toFixed(2)}%
+                - Average R:R Ratio: ${avgRR.toFixed(2)}
+                - Avg Win/Avg Loss: $${avgWin.toFixed(2)} / $${Math.abs(avgLoss).toFixed(2)}`;
+
+            try {
+                const result = await callGeminiApi({
+                    contents: [{ parts: [{ text: userQuery }] }],
+                    systemInstruction: { parts: [{ text: systemPrompt }] }
+                }, true); // Use Google Search Grounding
+
+                summaryContent.innerHTML = result.text;
+                
+                if (result.sources.length > 0) {
+                    const sourceText = result.sources.map((s, i) => 
+                        `<a href="${s.uri}" target="_blank" class="text-accent-blue hover:text-light-gold">(${i + 1}) ${s.title}</a>`
+                    ).join(', ');
+                    summarySources.innerHTML = `Sources: ${sourceText}`;
+                }
+
+            } catch (error) {
+                console.error("Gemini API error for Dashboard Summary:", error);
+                summaryContent.innerHTML = `<p class="text-accent-red">AI Summary failed. Error: ${error.message}.</p>`;
+            } finally {
+                button.disabled = false;
+                button.innerHTML = '<span class="text-xl">✨</span> Generate Performance Summary';
+            }
+        }
+        
+        // --- CAPITAL MANAGEMENT HELPERS ---
+        function getCapitalDocRef() {
+            if (!userId || !db) return null;
+            // Store capital settings in a dedicated document in the user's private path
+            return doc(db, `artifacts/${appId}/users/${userId}/settings`, 'capital_setting');
+        }
+        
+        function loadStartingCapital() {
+            const docRef = getCapitalDocRef();
+            if (!docRef) return;
+            
+            onSnapshot(docRef, (docSnap) => {
+                let newCapital = 9187.00; // Default
+                if (docSnap.exists()) {
+                    newCapital = parseFloat(docSnap.data().value) || 9187.00;
+                } else if (isAuthReady) {
+                    setDoc(docRef, { value: 9187.00, lastUpdated: new Date().getTime() }).catch(e => console.error("Error setting initial capital:", e));
+                }
+                
+                if (startingCapital !== newCapital) {
+                    startingCapital = newCapital;
+                    if (window.tradesForRender) { 
+                         renderKPIs(window.tradesForRender);
+                    }
+                }
+            }, (error) => {
+                console.error("Error loading starting capital:", error);
+            });
+        }
+        
+        async function saveCapital(newValue) {
+            const docRef = getCapitalDocRef();
+            if (!docRef || isNaN(newValue) || newValue <= 0) {
+                showMessage("Invalid capital value.", 'error');
+                return;
+            }
+            try {
+                await updateDoc(docRef, { 
+                    value: parseFloat(newValue), 
+                    lastUpdated: new Date().getTime() 
+                });
+                showMessage("Starting Capital updated successfully!", 'success');
+            } catch (error) {
+                console.error("Error updating starting capital:", error);
+                showMessage("Failed to save capital.", 'error');
+            }
+        }
+        
+        // --- FIREBASE INITIALIZATION & AUTH ---
+        async function initFirebaseAndAuth() {
+            if (!firebaseConfig) {
+                console.error("Firebase config is missing. App cannot run.");
+                document.getElementById('loading-spinner').innerHTML = `<p class="text-accent-red">Firebase configuration is missing.</p>`;
+                return;
+            }
+            
+            try {
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        document.getElementById('user-id-display').textContent = userId.substring(0, 8) + '...';
+                        isAuthReady = true;
+                        loadStartingCapital(); // Load capital settings first
+                        setupFirestoreListener(); // Then start listening for trades
+                        populateFormSelects();
+                        document.getElementById('trade-date').valueAsDate = new Date();
+                    } else {
+                        isAuthReady = false;
+                        console.error("Authentication failed.");
+                        document.getElementById('loading-spinner').innerHTML = `<p class="text-accent-red">Authentication failed. Cannot load journal.</p>`;
+                    }
+                });
+            } catch (error) {
+                console.error("Error initializing Firebase:", error);
+                document.getElementById('loading-spinner').innerHTML = `<p class="text-accent-red">Failed to initialize. Check console.</p>`;
+            }
+        }
+
+        // --- DATA PATH & FIRESTORE LISTENER ---
+        function getCollectionPath() {
+            if (!userId) return null;
+            return `artifacts/${appId}/users/${userId}/trades`;
+        }
+
+        async function seedDatabase() {
+            const path = getCollectionPath();
+            if (!path) return;
+            
+            console.log("Seeding database with initial 5 trades...");
+            const tradesCol = collection(db, path);
+            const batch = writeBatch(db);
+
+            SEEDED_TRADES.forEach(trade => {
+                const docRef = doc(tradesCol); // Create a new doc with a random ID
+                batch.set(docRef, trade);
+            });
+
+            try {
+                await batch.commit();
+                console.log("Database seeded successfully.");
+            } catch (error) {
+                console.error("Error seeding database:", error);
+            }
+        }
+
+        function setupFirestoreListener() {
+            const path = getCollectionPath();
+            if (!path) return;
+
+            const tradesCol = collection(db, path);
+            const q = query(tradesCol); 
+
+            onSnapshot(q, async (snapshot) => {
+                const fetchedTrades = [];
+                tradesCache = {}; // Clear cache on update
+                
+                snapshot.forEach((doc) => {
+                    const data = doc.data();
+                    const trade = {
+                        id: doc.id,
+                        ...data,
+                        // Ensure all data from Firestore is correctly typed
+                        entry: parseFloat(data.entry),
+                        exit: parseFloat(data.exit),
+                        initialSL: parseFloat(data.initialSL),
+                        lot: parseFloat(data.lot),
+                        netPNL: parseFloat(data.netPNL),
+                        rr: parseFloat(data.rr),
+                    };
+                    fetchedTrades.push(trade);
+                    tradesCache[trade.id] = trade; // Update cache
+                });
+                
+                if (fetchedTrades.length === 0 && snapshot.metadata.fromCache === false) {
+                    await seedDatabase();
+                } else {
+                    fetchedTrades.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+                    renderAllDashboard(fetchedTrades);
+                }
+                
+                document.getElementById('loading-spinner').classList.add('hidden');
+                document.getElementById('main-content').classList.remove('hidden');
+
+            }, (error) => {
+                console.error("Error fetching trades:", error);
+                document.getElementById('loading-spinner').innerHTML = `<p class="text-accent-red">Error fetching trades. ${error.message}</p>`;
+            });
+        }
+        
+        // --- FORM LOGIC AND CALCULATIONS ---
+
+        function populateFormSelects() {
+            const strategySelect = document.getElementById('strategy');
+            STRATEGIES.forEach(s => {
+                strategySelect.innerHTML += `<option value="${s}">${s}</option>`;
+            });
+
+            const emotionSelect = document.getElementById('emotion');
+            EMOTIONS.forEach(e => {
+                emotionSelect.innerHTML += `<option value="${e}">${e}</option>`;
+            });
+            
+            const symbolSelect = document.getElementById('symbol');
+            SYMBOLS.forEach(s => {
+                symbolSelect.innerHTML += `<option value="${s}">${s}</option>`;
+            });
+        }
+        
+        /**
+         * Calculates Net P&L based on the exact spreadsheet logic.
+         */
+        function calculateNetPNL(side, entry, exit, lot, symbol) {
+            // Assume 100k units for major FX and 100 units for XAU
+            const isForex = ["USDJPY", "USOIL", "EURUSD", "GBPUSD"].includes(symbol);
+            const isXAU = symbol.includes("XAU");
+            const unitsMultiplier = isXAU ? 100 : isForex ? 100000 : 1000; 
+
+            let pips;
+            if (isXAU) {
+                pips = Math.abs(exit - entry) * 100;
+            } else if (symbol === 'USDJPY') {
+                pips = Math.abs(exit - entry) * 100;
+            } else { // EURUSD, GBPUSD, etc. (4 decimal)
+                pips = Math.abs(exit - entry) * 10000;
+            }
+
+            const pnlPerUnit = pips * (lot * (isXAU ? 1 : 10)); // Simplified PNL calculation based on lot size
+            
+            let grossPNL;
+            if (side === "Long") {
+                grossPNL = (exit - entry) / (isXAU ? 1 : 0.0001) * lot;
+            } else { // Short
+                grossPNL = (entry - exit) / (isXAU ? 1 : 0.0001) * lot;
+            }
+
+            // Using a simple PNL approximation for demonstration
+            if (symbol === 'USDJPY' || symbol === 'EURUSD' || symbol === 'GBPUSD') {
+                 grossPNL = (side === "Long" ? (exit - entry) : (entry - exit)) * lot * 100000;
+            } else if (symbol === 'XAUUSD') {
+                 grossPNL = (side === "Long" ? (exit - entry) : (entry - exit)) * lot * 100;
+            } else {
+                 grossPNL = (side === "Long" ? (exit - entry) : (entry - exit)) * lot; // Default
+            }
+
+            return parseFloat(grossPNL.toFixed(2));
+        }
+
+        /**
+         * Calculates R:R Ratio based on the exact spreadsheet logic.
+         */
+        function calculateRRatio(side, entry, exit, initialSL) {
+            const risk = Math.abs(entry - initialSL);
+            if (risk === 0) return 0.0;
+            
+            const reward = (side === "Long") ? (exit - entry) : (entry - exit);
+            const rr = reward / risk;
+            return parseFloat(rr.toFixed(2));
+        }
+
+        async function handleFormSubmit(event) {
+            event.preventDefault();
+            if (!isAuthReady || !db) {
+                showMessage('Database not connected. Please wait.', 'error');
+                return;
+            }
+
+            const submitButton = document.getElementById('submit-button');
+            submitButton.disabled = true;
+
+            const editingId = document.getElementById('editing-trade-id').value;
+
+            try {
+                // Get all form data
+                const tradeData = {
+                    date: document.getElementById('trade-date').value,
+                    symbol: document.getElementById('symbol').value,
+                    side: document.getElementById('side').value,
+                    entry: parseFloat(document.getElementById('entry-price').value),
+                    exit: parseFloat(document.getElementById('exit-price').value),
+                    initialSL: parseFloat(document.getElementById('initial-sl').value),
+                    lot: parseFloat(document.getElementById('lot-size').value),
+                    strategy: document.getElementById('strategy').value,
+                    emotion: document.getElementById('emotion').value,
+                };
+
+                // Calculate metrics
+                const netPNL = calculateNetPNL(tradeData.side, tradeData.entry, tradeData.exit, tradeData.lot, tradeData.symbol);
+                const rr = calculateRRatio(tradeData.side, tradeData.entry, tradeData.exit, tradeData.initialSL);
+                const result = netPNL > 0 ? 'Win' : netPNL < 0 ? 'Loss' : 'B.E.';
+
+                const finalTrade = {
+                    ...tradeData,
+                    netPNL,
+                    rr,
+                    result,
+                };
+
+                if (editingId) {
+                    // Update existing trade
+                    const docRef = doc(db, getCollectionPath(), editingId);
+                    await updateDoc(docRef, finalTrade);
+                    showMessage('Trade updated successfully!', 'success');
+                    setActiveTab('trade-log'); // Go to log to see update
+                } else {
+                    // Save new trade
+                    finalTrade.timestamp = new Date().getTime(); // Add timestamp for sorting
+                    await addDoc(collection(db, getCollectionPath()), finalTrade);
+                    showMessage('Trade logged successfully!', 'success');
+                    setActiveTab('trade-log'); // Go to log to see new trade
+                }
+                
+                cancelEdit(); // Resets form
+
+            } catch (error) {
+                console.error("Error saving trade:", error);
+                showMessage(`Error: ${error.message}`, 'error');
+            } finally {
+                submitButton.disabled = false;
+            }
+        }
+        
+        // --- EDIT / DELETE / CANCEL FUNCTIONS ---
+        
+        function handleEdit(id, event) {
+            if (event) event.stopPropagation();
+            
+            const trade = tradesCache[id];
+            if (!trade) {
+                console.error("Could not find trade in cache:", id);
+                return;
+            }
+
+            document.getElementById('trade-date').value = trade.date;
+            document.getElementById('symbol').value = trade.symbol;
+            document.getElementById('side').value = trade.side;
+            document.getElementById('entry-price').value = trade.entry;
+            document.getElementById('exit-price').value = trade.exit;
+            document.getElementById('initial-sl').value = trade.initialSL;
+            document.getElementById('lot-size').value = trade.lot;
+            document.getElementById('strategy').value = trade.strategy;
+            document.getElementById('emotion').value = trade.emotion;
+
+            document.getElementById('editing-trade-id').value = id;
+            document.getElementById('form-title').textContent = 'Edit Trade';
+            document.getElementById('submit-button').textContent = 'Update Trade';
+            document.getElementById('submit-button').classList.replace('bg-gold', 'bg-accent-blue');
+            document.getElementById('submit-button').classList.replace('hover:bg-light-gold', 'hover:bg-blue-600');
+            document.getElementById('cancel-edit-button').classList.remove('hidden');
+
+            setActiveTab('log-trade'); 
+        }
+
+        function cancelEdit() {
+            document.getElementById('new-trade-form').reset();
+            document.getElementById('trade-date').valueAsDate = new Date();
+            document.getElementById('editing-trade-id').value = '';
+            
+            document.getElementById('form-title').textContent = 'Log New Trade';
+            document.getElementById('submit-button').textContent = 'Log Trade';
+            document.getElementById('submit-button').classList.replace('bg-accent-blue', 'bg-gold');
+            document.getElementById('submit-button').classList.replace('hover:bg-blue-600', 'hover:bg-light-gold');
+            document.getElementById('cancel-edit-button').classList.add('hidden');
+            hideMessageBox();
+        }
+
+        function handleDelete(id, event) {
+            if (event) event.stopPropagation();
+            
+            const box = document.getElementById('messageBox');
+            box.classList.remove('hidden');
+            box.classList.add('p-4', 'rounded-lg', 'bg-dark-bg', 'border', 'border-accent-red');
+            box.innerHTML = `
+                <p class="text-white font-semibold">Are you sure you want to delete this trade?</p>
+                <div class="flex justify-end space-x-2 mt-3">
+                    <button onclick="confirmDelete('${id}')" class="px-4 py-2 bg-accent-red hover:bg-red-700 text-white font-bold rounded-lg transition">Delete</button>
+                    <button onclick="hideMessageBox()" class="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white font-bold rounded-lg transition">Cancel</button>
+                </div>
+            `;
+            window.confirmDelete = async (tradeId) => {
+                try {
+                    await deleteDoc(doc(db, getCollectionPath(), tradeId));
+                    showMessage('Trade deleted.', 'success');
+                } catch (error) {
+                    console.error("Error deleting trade:", error);
+                    showMessage(`Error: ${error.message}`, 'error');
+                }
+            };
+            
+            setActiveTab('log-trade'); 
+        }
+        
+        // --- MESSAGE BOX UTILITIES ---
+        function showMessage(message, type) {
+            const box = document.getElementById('messageBox');
+            box.classList.remove('hidden', 'bg-dark-bg', 'border', 'border-accent-red');
+            box.classList.add('p-4', 'rounded-lg');
+            box.innerHTML = `<p>${message}</p>`;
+
+            if (type === 'success') {
+                box.classList.add('bg-accent-green/20', 'text-accent-green');
+            } else {
+                box.classList.add('bg-accent-red/20', 'text-accent-red');
+            }
+
+            setTimeout(hideMessageBox, 4000);
+        }
+        
+        function hideMessageBox() {
+            const box = document.getElementById('messageBox');
+            box.innerHTML = '';
+            box.classList.add('hidden');
+            box.classList.remove('p-4', 'rounded-lg', 'bg-dark-bg', 'border', 'border-accent-red', 'bg-accent-green/20', 'text-accent-green', 'bg-accent-red/20', 'text-accent-red');
+        }
+        window.hideMessageBox = hideMessageBox;
+
+
+        // --- DASHBOARD RENDERING FUNCTIONS ---
+        
+        function renderAllDashboard(trades) {
+            window.tradesForRender = trades;
+            
+            if (trades.length === 0) {
+                document.getElementById('no-trades-message').classList.remove('hidden');
+            } else {
+                document.getElementById('no-trades-message').classList.add('hidden');
+            }
+
+            renderKPIs(trades);
+            renderBreakdowns(trades);
+            renderTradeLog(trades);
+        }
+
+        function calculateKPIs(trades) {
+            const totalPNL = trades.reduce((sum, t) => sum + (t.netPNL || 0), 0);
+            const totalTrades = trades.length;
+            const winCount = trades.filter(t => t.result === 'Win').length;
+            const lossCount = trades.filter(t => t.result === 'Loss').length;
+            
+            const currentBalance = startingCapital + totalPNL; 
+            
+            const avgRR = totalTrades > 0 ? trades.reduce((sum, t) => sum + (t.rr || 0), 0) / totalTrades : 0;
+            const winRate = totalTrades > 0 ? (winCount / totalTrades) * 100 : 0;
+            
+            const winningPNLs = trades.filter(t => t.result === 'Win').map(t => t.netPNL);
+            const losingPNLs = trades.filter(t => t.result === 'Loss').map(t => t.netPNL);
+            const avgWin = winningPNLs.length > 0 ? winningPNLs.reduce((s, p) => s + p, 0) / winningPNLs.length : 0;
+            const avgLoss = losingPNLs.length > 0 ? losingPNLs.reduce((s, p) => s + p, 0) / losingPNLs.length : 0;
+            
+            window.kpiCache = { totalPNL, totalTrades, currentBalance, avgRR, winRate, avgWin, avgLoss, startingCapital };
+            return window.kpiCache;
+        }
+
+        function renderEditableCapitalCard(currentValue, borderClass) {
+            const rawValue = startingCapital.toFixed(2);
+            const currencyFormatter = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 });
+            const displayValue = currencyFormatter.format(startingCapital);
+
+            return `
+                <div id="starting-capital-kpi-card" class="bg-dark-card p-4 rounded-xl shadow-xl border-b-4 ${borderClass} transition duration-300 relative group h-36">
+                    <div id="capital-display" class="kpi-card-content">
+                        <p class="text-sm font-medium text-gray-400 mb-1 flex justify-between items-center w-full px-2">
+                            Starting Capital
+                            <button onclick="handleEditCapital()" title="Edit Starting Capital" class="text-gold opacity-50 group-hover:opacity-100 transition">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-9-9l8.4 8.4m-8.4-8.4l1.4-1.4a2.828 2.828 0 114 4l-1.4 1.4m-4-4L9 9"></path></svg>
+                            </button>
+                        </p>
+                        <p class="text-3xl sm:text-4xl font-extrabold text-gold truncate">${displayValue}</p>
+                    </div>
+                    
+                    <div id="capital-edit-form" class="hidden absolute inset-0 bg-dark-card p-4 flex flex-col justify-center rounded-xl z-10 border-b-4 ${borderClass}">
+                        <input type="number" step="0.01" id="capital-input" value="${rawValue}" 
+                               class="form-input text-lg mb-2 text-center" placeholder="9187.00">
+                        <div class="flex space-x-2 justify-center">
+                            <button onclick="saveCapitalAndClose()" class="bg-accent-green hover:bg-green-600 text-white px-3 py-1 rounded-lg text-sm transition">Save</button>
+                            <button onclick="cancelEditCapital()" class="bg-gray-600 hover:bg-gray-500 text-white px-3 py-1 rounded-lg text-sm transition">Cancel</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function handleEditCapital() {
+            document.getElementById('capital-display').classList.add('hidden');
+            document.getElementById('capital-edit-form').classList.remove('hidden');
+            const input = document.getElementById('capital-input');
+            input.focus();
+            
+            input.onkeydown = (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    saveCapitalAndClose();
+                }
+            };
+        }
+
+        function cancelEditCapital() {
+            document.getElementById('capital-display').classList.remove('hidden');
+            document.getElementById('capital-edit-form').classList.add('hidden');
+        }
+
+        async function saveCapitalAndClose() {
+            const input = document.getElementById('capital-input');
+            const newValue = parseFloat(input.value);
+            
+            if (isNaN(newValue) || newValue <= 0) {
+                showMessage("Please enter a valid positive number for capital.", 'error');
+                return;
+            }
+            
+            await saveCapital(newValue); 
+            cancelEditCapital();
+        }
+
+        function renderKPIs(trades) {
+            const { totalPNL, totalTrades, currentBalance, avgRR, winRate, avgWin, avgLoss } = calculateKPIs(trades);
+
+            const currencyFormatter = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 });
+            const rrFormatter = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+            const kpiData = [
+                { title: "Current Equity", value: currencyFormatter.format(currentBalance), color: currentBalance >= startingCapital ? 'text-accent-green' : 'text-accent-red', border: currentBalance >= startingCapital ? 'border-accent-green' : 'border-accent-red' },
+                { title: "Total Net P&L", value: currencyFormatter.format(totalPNL), color: totalPNL >= 0 ? 'text-accent-green' : 'text-accent-red', border: totalPNL >= 0 ? 'border-accent-green' : 'border-accent-red' },
+                { title: "Win Rate", value: `${winRate.toFixed(0)}%`, color: 'text-gold', border: 'border-gold' },
+                { title: "Avg. Win / Avg. Loss", value: `${currencyFormatter.format(avgWin)} / ${currencyFormatter.format(Math.abs(avgLoss))}`, color: 'text-white', border: 'border-gray-700' },
+                { title: "Total Trades", value: totalTrades.toLocaleString(), color: 'text-gold', border: 'border-gray-700' },
+                { title: "Avg. R:R Ratio", value: rrFormatter.format(avgRR), color: 'text-gold', border: avgRR >= 1 ? 'border-accent-green' : 'border-gold' }
+            ];
+
+            const dashboard = document.getElementById('kpi-dashboard');
+            
+            let html = renderEditableCapitalCard(currencyFormatter.format(startingCapital), 'border-gold');
+
+            html += kpiData.map(kpi => `
+                <div class="bg-dark-card p-4 rounded-xl shadow-xl border-b-4 ${kpi.border} transition duration-300 hover:scale-[1.02] h-36">
+                    <div class="kpi-card-content">
+                        <p class="text-sm font-medium text-gray-400 mb-1">${kpi.title}</p>
+                        <p class="text-3xl sm:text-4xl font-extrabold ${kpi.color} truncate">${kpi.value}</p>
+                    </div>
+                </div>
+            `).join('');
+
+            dashboard.innerHTML = html;
+        }
+
+        function renderBreakdowns(trades) {
+            const rrFormatter = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            const currencyFormatter = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 });
+            
+            if (trades.length === 0) {
+                document.getElementById('strategy-breakdown').innerHTML = STRATEGY_EMPTY_HTML;
+                document.getElementById('emotion-breakdown').innerHTML = EMOTION_EMPTY_HTML;
+                document.getElementById('generate-summary-btn').disabled = true;
+                return; 
+            }
+            document.getElementById('generate-summary-btn').disabled = false;
+
+            // Strategy P&L
+            const strategyMap = trades.reduce((acc, t) => {
+                const key = t.strategy || 'N/A';
+                acc[key] = (acc[key] || 0) + (t.netPNL || 0);
+                return acc;
+            }, {});
+
+            const maxStrategyPNL = Math.max(...Object.values(strategyMap).map(pnl => Math.abs(pnl)), 1);
+            const strategyHTML = Object.entries(strategyMap).sort((a,b) => b[1] - a[1]).map(([strategy, pnl]) => {
+                const percentage = (Math.abs(pnl) / maxStrategyPNL) * 100;
+                const pnlColor = pnl >= 0 ? 'bg-accent-green' : 'bg-accent-red';
+                return `
+                    <div class="text-sm">
+                        <div class="flex justify-between mb-1">
+                            <span class="font-medium text-gray-300">${strategy}</span>
+                            <span class="font-bold ${pnl >= 0 ? 'text-accent-green' : 'text-accent-red'}">${currencyFormatter.format(pnl)}</span>
+                        </div>
+                        <div class="w-full bg-gray-700 rounded-full h-2.5">
+                            <div class="chart-bar h-2.5 rounded-full ${pnlColor}" style="width: ${percentage.toFixed(0)}%;"></div>
+                        </div>
+                    </div>`;
+            }).join('');
+            document.getElementById('strategy-breakdown').innerHTML = strategyHTML;
+
+            // Emotion vs. R:R
+            const emotionMap = trades.reduce((acc, t) => {
+                const key = t.emotion || 'N/A';
+                if (!acc[key]) acc[key] = { totalRR: 0, count: 0 };
+                acc[key].totalRR += (t.rr || 0);
+                acc[key].count += 1;
+                return acc;
+            }, {});
+
+            const emotionRatios = Object.entries(emotionMap).map(([emotion, data]) => ({
+                emotion,
+                avgRR: data.totalRR / data.count
+            }));
+            
+            const maxEmotionRR = Math.max(...emotionRatios.map(e => e.avgRR), 1);
+            const emotionHTML = emotionRatios.sort((a,b) => b.avgRR - a.avgRR).map(({ emotion, avgRR }) => {
+                const percentage = (avgRR / maxEmotionRR) * 100;
+                const rrColor = avgRR >= 1.5 ? 'bg-accent-green' : avgRR >= 1 ? 'bg-gold' : 'bg-accent-red';
+                return `
+                    <div class="text-sm">
+                        <div class="flex justify-between mb-1">
+                            <span class="font-medium text-gray-300">${emotion}</span>
+                            <span class="font-bold text-white">${rrFormatter.format(avgRR)} R</span>
+                        </div>
+                        <div class="w-full bg-gray-700 rounded-full h-2.5">
+                            <div class="chart-bar h-2.5 rounded-full ${rrColor}" style="width: ${percentage.toFixed(0)}%;"></div>
+                        </div>
+                    </div>`;
+            }).join('');
+            document.getElementById('emotion-breakdown').innerHTML = emotionHTML;
+        }
+
+        function renderTradeLog(trades) {
+            const tradesList = document.getElementById('trades-list');
+            const currencyFormatter = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 });
+            const rrFormatter = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            
+            if (trades.length === 0) {
+                tradesList.innerHTML = '';
+                return;
+            }
+
+            tradesList.innerHTML = trades.map(trade => {
+                const pnlColor = trade.netPNL >= 0 ? 'text-accent-green' : 'text-accent-red';
+                const resultPillClass = trade.result === 'Win' ? 'bg-accent-green/30 text-accent-green' : trade.result === 'Loss' ? 'bg-accent-red/30 text-accent-red' : 'bg-gray-500/30 text-gray-400';
+                
+                const priceDecimals = trade.symbol?.includes('XAU') ? 2 : trade.symbol?.includes('JPY') ? 3 : 5; 
+                const entryPrice = isNaN(trade.entry) ? 'N/A' : trade.entry.toFixed(priceDecimals);
+                const exitPrice = isNaN(trade.exit) ? 'N/A' : trade.exit.toFixed(priceDecimals);
+                const initialSLPrice = isNaN(trade.initialSL) ? 'N/A' : trade.initialSL.toFixed(priceDecimals);
+
+                return `
+                    <div id="trade-card-${trade.id}" class="trade-card bg-dark-card p-4 rounded-xl shadow-lg border border-gray-800 hover:border-gold transition duration-150">
+                        
+                        <!-- Header: Minimal Info (Clickable) -->
+                        <div onclick="toggleTradeDetails('${trade.id}')" class="flex items-center justify-between cursor-pointer">
+                            <div class="flex items-center space-x-4 flex-1 min-w-0">
+                                <span class="text-sm text-gray-400 w-20">${trade.date}</span>
+                                <span class="text-lg font-bold text-gold truncate">${trade.symbol}</span>
+                                <span class="text-sm font-semibold ${pnlColor} hidden sm:block">${currencyFormatter.format(trade.netPNL)}</span>
+                            </div>
+                            <div class="flex items-center space-x-3">
+                                <div class="px-3 py-1 text-xs font-bold uppercase rounded-full w-20 text-center ${resultPillClass}">
+                                    ${trade.result}
+                                </div>
+                                <svg id="arrow-${trade.id}" class="w-5 h-5 text-gray-500 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                                </svg>
+                            </div>
+                        </div>
+
+                        <!-- Details Body (Hidden by default) -->
+                        <div id="details-${trade.id}" class="trade-details hidden-transition mt-0">
+                            <div class="pt-4 border-t border-gray-700">
+                                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-4">
+                                    <div class="space-y-1"><p class="text-gray-500">Net P&L:</p><p class="font-bold ${pnlColor}">${currencyFormatter.format(trade.netPNL)}</p></div>
+                                    <div class="space-y-1"><p class="text-gray-500">R:R Ratio:</p><p class="font-bold text-white">${rrFormatter.format(trade.rr)}</p></div>
+                                    <div class="space-y-1"><p class="text-gray-500">Side / Lot:</p><p class="font-bold text-white">${trade.side} / ${trade.lot}</p></div>
+                                    <div class="space-y-1"><p class="text-gray-500">Strategy:</p><p class="font-bold text-white">${trade.strategy}</p></div>
+                                    <div class="space-y-1"><p class="text-gray-500">Entry Price:</p><p class="font-mono text-white">${entryPrice}</p></div>
+                                    <div class="space-y-1"><p class="text-gray-500">Exit Price:</p><p class="font-mono text-white">${exitPrice}</p></div>
+                                    <div class="space-y-1"><p class="text-gray-500">Initial SL:</p><p class="font-mono text-white">${initialSLPrice}</p></div>
+                                    <div class="space-y-1"><p class="text-gray-500">Emotion:</p><p class="font-bold text-white">${trade.emotion}</p></div>
+                                </div>
+                                
+                                <!-- AI Insight Button and Output -->
+                                <div class="flex justify-end pt-3 border-t border-gray-700">
+                                    <button id="analyze-btn-${trade.id}" onclick="getTradeInsight('${trade.id}')" class="px-4 py-2 bg-gold hover:bg-light-gold text-dark-bg font-semibold rounded-lg text-sm transition disabled:opacity-50 flex items-center space-x-1">
+                                         <span class="text-xl">✨</span> <span>Analyze Trade</span>
+                                    </button>
+                                </div>
+                                <div id="insight-output-${trade.id}" class="mt-4 p-4 text-sm bg-gray-700/30 rounded-lg text-gray-300">
+                                    Click 'Analyze Trade' for an AI-powered review of your risk and behavior.
+                                </div>
+                                
+                                <div class="flex justify-end space-x-2 border-t border-gray-700 pt-3 mt-4">
+                                    <button onclick="handleEdit('${trade.id}', event)" class="px-3 py-1 bg-accent-blue hover:bg-blue-600 text-white font-semibold rounded-lg text-sm transition">Edit</button>
+                                    <button onclick="handleDelete('${trade.id}', event)" class="px-3 py-1 bg-accent-red hover:bg-red-700 text-white font-semibold rounded-lg text-sm transition">Delete</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        // --- UI UTILITIES ---
+        function setActiveTab(active) {
+            const tabs = ['dashboard', 'log-trade', 'trade-log'];
+            tabs.forEach(tab => {
+                const content = document.getElementById(`${tab}-view`);
+                const button = document.getElementById(`tab-${tab}`);
+                
+                if (tab === active) {
+                    content.classList.remove('hidden');
+                    button.classList.add('tab-active');
+                    button.classList.remove('tab-inactive');
+                } else {
+                    content.classList.add('hidden');
+                    button.classList.add('tab-inactive');
+                    button.classList.remove('tab-active');
+                }
+            });
+            if (active !== 'log-trade' && !document.getElementById('editing-trade-id').value) {
+                cancelEdit();
+            }
+        }
+        
+        function toggleTradeDetails(id) {
+            const detailsDiv = document.getElementById(`details-${id}`);
+            const arrowIcon = document.getElementById(`arrow-${id}`);
+            
+            if (detailsDiv.classList.contains('hidden-transition')) {
+                detailsDiv.classList.remove('hidden-transition');
+                detailsDiv.classList.add('show-transition');
+                arrowIcon.classList.add('rotate-180');
+            } else {
+                detailsDiv.classList.add('hidden-transition');
+                detailsDiv.classList.remove('show-transition');
+                arrowIcon.classList.remove('rotate-180');
+            }
+        }
+        
+        // --- INITIALIZATION ---
+        window.onload = function() {
+            initFirebaseAndAuth();
+        };
+
+    </script>
+</body>
+</html>
